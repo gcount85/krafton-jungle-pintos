@@ -242,11 +242,11 @@ uint64_t hash_func(const struct hash_elem* e, void* aux)
 
 bool hash_less(const struct hash_elem* lhs, const struct hash_elem* rhs, void* aux)
 {
-    struct page* lpage = (uintptr_t)hash_entry(lhs, struct page, elem);
-    struct page* rpage = (uintptr_t)hash_entry(rhs, struct page, elem);
+    struct page* lpage = hash_entry(lhs, struct page, elem);
+    struct page* rpage = hash_entry(rhs, struct page, elem);
 
-    uintptr_t lva = lpage->va;
-    uintptr_t rva = rpage->va;
+    uintptr_t lva = (uintptr_t)lpage->va;
+    uintptr_t rva = (uintptr_t)rpage->va;
 
     return lva < rva;
 }

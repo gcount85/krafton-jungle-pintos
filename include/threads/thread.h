@@ -115,16 +115,14 @@ struct thread
 
     /****************** P2: 추가한 필드 *************************/
     // struct thread *parent_process;	// Pointer to parent process
-    struct list child_list;         // Pointers to the children list
-    struct list_elem child_elem;    // Pointers to the children list-elem
     struct semaphore sema_for_wait; // `wait()`을 위한 세마포어 (구조체 불러오기 어떻게?)
     struct semaphore sema_for_fork; // `fork()`을 위한 세마포어 (구조체 불러오기 어떻게?)
-    struct semaphore sema_for_free; // +++ 자식의 exit 후 부모를 다시 자유롭게 해줌
-    int exit_status;                // 스레드의 종료 상태를 나타냄
     struct file** fdt;              // fdt를 가리키는 포인터 (구조체 불러오기 어떻게?)
     struct intr_frame parent_if;    // +++ 부모의 tf 값 (fork)
     struct file* running_f;         // +++ 실행 중인 파일
     int next_fd;
+    struct thread* parent;
+    struct list child_info_list;
     /****************** P2: 추가한 필드 - 끝 *************************/
 
     /* Shared between thread.c and synch.c. */
@@ -188,7 +186,19 @@ void test_max_priority(void);
 /****************** P1 priority: 프로토타입 추가 - 끝 *************************/
 
 /*************** P2 sys call: 프로토타입 추가 - 시작 ***************/
-struct thread* get_child(tid_t child_tid); // +++ tid로 자식 검색
+struct child_info_t
+{
+    tid_t tid;
+    int exit_status;
+    struct semaphore sema_for_wait;
+    struct list_elem elem;
+};
+
+void add_child(struct thread* parent, tid_t child_tid);
+void set_exit_status(struct thread* parent, tid_t child_tid, int exit_status);
+int get_exit_status(struct thread* parent, tid_t child_tid);
+struct child_info_t* get_child_info(struct thread* parent, tid_t child_tid);
+void delete_child(struct thread* parent, tid_t child_tid);
 
 /*************** P2 sys call: 프로토타입 추가 - 끝 ***************/
 

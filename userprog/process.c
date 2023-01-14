@@ -68,7 +68,6 @@ tid_t process_create_initd(const char* file_name)
     // 인수; 스레드 이름(문자열), 스레드 우선순위,
     // 생성된 스레드가 실행할 함수 포인터, 그 함수에게 넘겨줄 인수
     tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
-
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
     return tid;
@@ -106,9 +105,8 @@ tid_t process_fork(const char* name, struct intr_frame* if_ UNUSED)
         return TID_ERROR;
     }
 
-    struct thread* child = get_child(tid);
-    sema_down(&child->sema_for_fork); // sema up이 do fork에서 이루어질때까지 다음 수행은 이루어지지 않음
-    if (child->exit_status == -1)
+    sema_down(&parent->sema_for_fork); // sema up이 do fork에서 이루어질때까지 다음 수행은 이루어지지 않음
+    if (get_exit_status(parent, tid) == -1)
     {
         return TID_ERROR;
     }
@@ -235,7 +233,7 @@ static void __do_fork(void* aux)
         }
     }
     current->next_fd = parent->next_fd;
-    sema_up(&current->sema_for_fork); // 위치가 꼭 여기여야 함?
+    sema_up(&parent->sema_for_fork); // 위치가 꼭 여기여야 함?
 
     if_.R.rax = 0;
     /********* P2 syscall: 추가한 코드 - 끝 *********/
@@ -246,8 +244,8 @@ static void __do_fork(void* aux)
 error:
     /********* P2 syscall: 추가한 코드 - 시작 *********/
 
-    current->exit_status = TID_ERROR;
-    sema_up(&current->sema_for_fork);
+    set_exit_status(parent, current->tid, TID_ERROR);
+    sema_up(&parent->sema_for_fork);
     exit(TID_ERROR);
     /********* P2 syscall: 추가한 코드 - 끝 *********/
 }
@@ -280,7 +278,6 @@ int process_exec(void* f_name)
         palloc_free_page(file_name); // ++ 자리 옮김
         return -1;
     }
-
     /* Start switched process. */
     do_iret(&_if);
     NOT_REACHED();
@@ -304,15 +301,14 @@ int process_wait(tid_t child_tid UNUSED)
      * XXX:       implementing the process_wait. */
 
     struct thread* curr = thread_current();
-    struct thread* child = get_child(child_tid);
-    if (child == NULL)
+    struct child_info_t* info = NULL;
+    if (!(info = get_child_info(curr, child_tid)))
     {
         return -1;
     }
-    sema_down(&child->sema_for_wait); // 이 시점에서 자식 프로세스 종료될 때까지 호출자 블락, child가 exit을 부를 때 sema_up()
-    int child_exit_status = child->exit_status;
-    list_remove(&child->child_elem); /*sema_down을 했다는 건 child process가 exit을 했다는 의미*/
-    sema_up(&child->sema_for_free);  // 다른 세마포어?!
+    sema_down(&info->sema_for_wait); // 이 시점에서 자식 프로세스 종료될 때까지 호출자 블락, child가 exit을 부를 때 sema_up()
+    int child_exit_status = get_exit_status(curr, child_tid);
+    delete_child(curr, child_tid);
     return child_exit_status;
 }
 
@@ -336,10 +332,8 @@ void process_exit(void)
     /* Deallocate File Descriptor Table */
     palloc_free_multiple(cur->fdt, FDT_PAGES);
     file_close(cur->running_f);
-
-    sema_up(&cur->sema_for_wait); // 블락 되어있던 wait 호출자 프로세스가 깨어남
-    sema_down(&cur->sema_for_free);
-
+    struct child_info_t* info = get_child_info(cur->parent, cur->tid);
+    sema_up(&info->sema_for_wait); // 블락 되어있던 wait 호출자 프로세스가 깨어남
     /********* P2 syscall: wait 관련 코드 추가 - 끝 *********/
 
     process_cleanup();
